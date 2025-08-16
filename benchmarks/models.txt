@@ -1,1 +1,1 @@
-musk_large_patch16_384,hf_hub:xiangjx/musk
+spotwhisperer_local,/oak/stanford/groups/zinaida/moritzs/cellwhisperer/results/models/jointemb/spotwhisperer_clip_v1.ckpt

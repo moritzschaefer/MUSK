@@ -1,4 +1,6 @@
 """Console script for clip_benchmark."""
+
+import pyarrow  # prevent weird "race condition" leading to ImportError: /lib64/libgcc_s.so.1: version `GCC_7.0.0
 import argparse
 import sys
 import random
@@ -12,6 +14,9 @@ from clip_benchmark.datasets.builder import build_dataset, get_dataset_collate_f
 from clip_benchmark.metrics import zeroshot_classification, zeroshot_retrieval, linear_probe, image_retrieval
 from clip_benchmark.model_collection import get_model_collection_from_file, model_collection
 from clip_benchmark.models import load_clip, MODEL_TYPES
+
+# Load SpotWhisperer via adapter to expose a MUSK-compatible interface
+from clip_benchmark.models.spotwhisperer_adapter import load_spotwhisperer_adapter
 import torch.nn as nn
 import torchvision
 import numpy as np
@@ -258,6 +263,10 @@ def run(args, transforms=None):
         model_type = 'musk'
     elif 'conch' in args.model.lower():
         model_type = 'conch'
+    elif model_type == "spotwhisperer":
+        # args.pretrained is expected to be a path to a checkpoint here
+        model, transform, tokenizer = load_spotwhisperer_adapter(args.pretrained, device=args.device)
+        model.eval()
     else:
         raise NotImplementedError
 
