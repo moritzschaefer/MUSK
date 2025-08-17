@@ -1,5 +1,6 @@
 """Console script for clip_benchmark."""
 
+from pathlib import Path
 import pyarrow  # prevent weird "race condition" leading to ImportError: /lib64/libgcc_s.so.1: version `GCC_7.0.0
 import argparse
 import sys
@@ -263,10 +264,8 @@ def run(args, transforms=None):
         model_type = 'musk'
     elif 'conch' in args.model.lower():
         model_type = 'conch'
-    elif model_type == "spotwhisperer":
-        # args.pretrained is expected to be a path to a checkpoint here
-        model, transform, tokenizer = load_spotwhisperer_adapter(args.pretrained, device=args.device)
-        model.eval()
+    elif 'spotwhisperer' in args.model.lower():
+        model_type = 'spotwhisperer'
     else:
         raise NotImplementedError
 
@@ -333,6 +332,10 @@ def run(args, transforms=None):
                 )
             model.eval()
 
+        elif model_type == "spotwhisperer":
+            # args.pretrained is expected to be a path to a checkpoint here
+            model, transform, tokenizer = load_spotwhisperer_adapter(args.pretrained, device=args.device)
+            model.eval()
         else:
             raise NotImplementedError
         
@@ -462,7 +465,7 @@ def run(args, transforms=None):
     if args.verbose:
         print(f"Dump results to: {output}")
         
-    os.makedirs("results", exist_ok=True)
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
     with open(output, "a+") as f:
         json.dump(dump, f)
         f.write('\n')

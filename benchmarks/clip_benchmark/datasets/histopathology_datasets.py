@@ -13,11 +13,16 @@ import json
 import pandas as pd
 from pathlib import Path
 import io
+import logging
+logger = logging.getLogger(__name__)
 
 
 class SkinDataset(torch.utils.data.Dataset):
     def __init__(self, root, csv_file, transform=None, train=True, val=False,
-                 tumor=False):
+                 tumor=False, scale_factors=[0.6, 1.0, 1.0]):  # scale_factors are approximates to match our training (we don't have zoom out)
+        # store scale factors for multi-scale cropping
+        self.scale_factors = scale_factors
+
         csv_file = os.path.join(root, csv_file)
         self.data = pd.read_csv(csv_file)
         self.data_root = root
@@ -74,32 +79,66 @@ class SkinDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.data)
 
+    def _crop_tile(self, image, scale_factor):
+        """Return a centered square crop of the PIL Image according to scale_factor.
+        If scale_factor == 1.0 the original image is returned.
+        For scale_factor < 1.0 a centered square crop with that fraction of width/height is returned.
+        """
+        if scale_factor == 1.0:
+            return image
+
+        w, h = image.size
+        cw = int(round(w * scale_factor))
+        ch = int(round(h * scale_factor))
+        side = min(cw, ch)
+
+        left = max(0, (w - side) // 2)
+        top = max(0, (h - side) // 2)
+        return image.crop((left, top, left + side, top + side))
+
     def __getitem__(self, index):
         image_path = self.image_paths[index]
         image = Image.open(os.path.join(self.data_root, image_path)).convert('RGB')
 
-        if self.transform is not None:
-            if self.transform.__class__.__name__ == "CLIPProcessor":
-                image = self.transform(images=image, return_tensors="pt")['pixel_values'].squeeze(0)
-            else:
-                image = self.transform(image)
+        multi_scale_tiles = []
+
+        for scale_factor in self.scale_factors:
+            try:
+                tile = self._crop_tile(image, scale_factor)
+
+                if self.transform.__class__.__name__ == "CLIPProcessor":
+                    t = self.transform(images=tile, return_tensors="pt")['pixel_values'].squeeze(0)
+                else:
+                    t = self.transform(tile)
+
+            except Exception as e:
+                logger.error(
+                    f"Error processing tile for image {image_path} at scale {scale_factor}: {e}"
+                )
+                t = torch.zeros((3, 224, 224), dtype=torch.float32)
+
+            multi_scale_tiles.append(t)
+
+        # Stack the scales for this sample: (n_scales, 3, 224, 224)
+        multi_scale_patch = torch.stack(multi_scale_tiles, dim=0)
 
         if not self.tumor:
             label = self.cat_to_num_map[self.labels[index]]
         else:
             label = self.tumor_map[self.labels[index]]
 
-        return image, label
+        return multi_scale_patch, self.labels[index]
 
 
 class PannukeDataset(torch.utils.data.Dataset):
-    def __init__(self, root, transform=None, train=True):
+    def __init__(self, root, transform=None, train=True, scale_factors=[0.6, 1.0, 1.0]):
         self.root = root
 
         df = pd.read_csv(os.path.join(root, "PanNuke_all_binary.csv"))
         self.df = df[df['split'] == 'train'] if train else df[df['split'] == 'test']
 
         self.transform = transform
+        self.scale_factors = scale_factors
 
         self.classes = ["benign",
                         "malignant"]
@@ -112,18 +151,48 @@ class PannukeDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.df)
 
+    def _crop_tile(self, image, scale_factor):
+        """Return a centered square crop of the PIL Image according to scale_factor.
+        If scale_factor == 1.0 the original image is returned.
+        """
+        if scale_factor == 1.0:
+            return image
+
+        w, h = image.size
+        cw = int(round(w * scale_factor))
+        ch = int(round(h * scale_factor))
+        side = min(cw, ch)
+
+        left = max(0, (w - side) // 2)
+        top = max(0, (h - side) // 2)
+        return image.crop((left, top, left + side, top + side))
+
     def __getitem__(self, index):
         fpath = os.path.join(self.root, self.df.iloc[index]['image'])
         image = Image.open(fpath).convert("RGB")
 
-        if self.transform is not None:
-            if self.transform.__class__.__name__ == "CLIPProcessor":
-                image = self.transform(images=image, return_tensors="pt")['pixel_values'].squeeze(0)
-            else:
-                image = self.transform(image)
+        multi_scale_tiles = []
+        for scale_factor in self.scale_factors:
+            try:
+                tile = self._crop_tile(image, scale_factor)
+
+                if self.transform.__class__.__name__ == "CLIPProcessor":
+                    t = self.transform(images=tile, return_tensors="pt")['pixel_values'].squeeze(0)
+                else:
+                    t = self.transform(tile)
+
+            except Exception as e:
+                logger.error(
+                    f"Error processing tile for file {fpath} at scale {scale_factor}: {e}"
+                )
+                t = torch.zeros((3, 224, 224), dtype=torch.float32)
+
+            multi_scale_tiles.append(t)
+
+        multi_scale_patch = torch.stack(multi_scale_tiles, dim=0)
 
         label = 1 if 'malignant' in self.df.iloc[index]['caption'] else 0
-        return image, label
+        return multi_scale_patch, self.df.iloc[index]['caption']
 
 
 
