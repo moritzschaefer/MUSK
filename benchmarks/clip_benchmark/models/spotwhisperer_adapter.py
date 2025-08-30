@@ -137,7 +137,7 @@ def load_spotwhisperer_adapter(pretrained_path: str, device: str = "cuda"):
 
     # Prefer the repository helper which may also return a tokenizer
 
-    pl_model, tokenizer, transcriptome_processor, image_processor = load_cellwhisperer_model(pretrained_path, device=device)
+    pl_model, tokenizer, transcriptome_processor, image_processor = load_cellwhisperer_model(pretrained_path)
 
     pl_model.eval()
 

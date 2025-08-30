@@ -18,8 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 class SkinDataset(torch.utils.data.Dataset):
-    def __init__(self, root, csv_file, transform=None, train=True, val=False,
-                 tumor=False, scale_factors=[0.6, 1.0, 1.0]):  # scale_factors are approximates to match our training (we don't have zoom out)
+    def __init__(self, root, csv_file, transform=None, train=True, val=False, tumor=False, scale_factors=[1.0]):
+        """
+        Args:
+            scale_factors (list of float): List of scale factors for multi-scale cropping. Used to align the dataset with the training scales
+        """
+
         # store scale factors for multi-scale cropping
         self.scale_factors = scale_factors
 
@@ -131,7 +135,11 @@ class SkinDataset(torch.utils.data.Dataset):
 
 
 class PannukeDataset(torch.utils.data.Dataset):
-    def __init__(self, root, transform=None, train=True, scale_factors=[0.6, 1.0, 1.0]):
+    def __init__(self, root, transform=None, train=True, scale_factors=[1.0]):
+        """
+        Args:
+            scale_factors (list of float): List of scale factors for multi-scale cropping. Used to align the dataset with the training scales
+        """
         self.root = root
 
         df = pd.read_csv(os.path.join(root, "PanNuke_all_binary.csv"))
