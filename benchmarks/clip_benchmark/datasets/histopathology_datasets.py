@@ -4,6 +4,7 @@ import random
 
 import torch
 from PIL import Image
+
 Image.MAX_IMAGE_PIXELS = None
 
 import pandas as pd
@@ -14,6 +15,7 @@ import pandas as pd
 from pathlib import Path
 import io
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,53 +34,59 @@ class SkinDataset(torch.utils.data.Dataset):
         self.data_root = root
 
         if train:
-            self.data = self.data[self.data['set'] == 'Train']
+            self.data = self.data[self.data["set"] == "Train"]
         else:
             if val:
-                self.data = self.data[self.data['set'] == "Validation"]
+                self.data = self.data[self.data["set"] == "Validation"]
             else:
-                self.data = self.data[self.data['set'] == 'Test']
+                self.data = self.data[self.data["set"] == "Test"]
 
         if tumor:
-            self.data = self.data[self.data['malignicy'] == 'tumor']
+            self.data = self.data[self.data["malignicy"] == "tumor"]
         self.tumor = tumor
 
-        self.image_paths = self.data['file'].values
-        self.labels = self.data['class'].values
+        self.image_paths = self.data["file"].values
+        self.labels = self.data["class"].values
 
         self.transform = transform
         self.train = train
 
-        self.cat_to_num_map = {'nontumor_skin_necrosis_necrosis': 0,
-                               'nontumor_skin_muscle_skeletal': 1,
-                               'nontumor_skin_sweatglands_sweatglands': 2,
-                               'nontumor_skin_vessel_vessel': 3,
-                               'nontumor_skin_elastosis_elastosis': 4,
-                               'nontumor_skin_chondraltissue_chondraltissue': 5,
-                               'nontumor_skin_hairfollicle_hairfollicle': 6,
-                               'nontumor_skin_epidermis_epidermis': 7,
-                               'nontumor_skin_nerves_nerves': 8,
-                               'nontumor_skin_subcutis_subcutis': 9,
-                               'nontumor_skin_dermis_dermis': 10,
-                               'nontumor_skin_sebaceousglands_sebaceousglands': 11,
-                               'tumor_skin_epithelial_sqcc': 12,
-                               'tumor_skin_melanoma_melanoma': 13,
-                               'tumor_skin_epithelial_bcc': 14,
-                               'tumor_skin_naevus_naevus': 15
-                               }
+        self.cat_to_num_map = {
+            "nontumor_skin_necrosis_necrosis": 0,
+            "nontumor_skin_muscle_skeletal": 1,
+            "nontumor_skin_sweatglands_sweatglands": 2,
+            "nontumor_skin_vessel_vessel": 3,
+            "nontumor_skin_elastosis_elastosis": 4,
+            "nontumor_skin_chondraltissue_chondraltissue": 5,
+            "nontumor_skin_hairfollicle_hairfollicle": 6,
+            "nontumor_skin_epidermis_epidermis": 7,
+            "nontumor_skin_nerves_nerves": 8,
+            "nontumor_skin_subcutis_subcutis": 9,
+            "nontumor_skin_dermis_dermis": 10,
+            "nontumor_skin_sebaceousglands_sebaceousglands": 11,
+            "tumor_skin_epithelial_sqcc": 12,
+            "tumor_skin_melanoma_melanoma": 13,
+            "tumor_skin_epithelial_bcc": 14,
+            "tumor_skin_naevus_naevus": 15,
+        }
 
-        self.tumor_map = {'tumor_skin_epithelial_sqcc': 0,
-                          'tumor_skin_melanoma_melanoma': 1,
-                          'tumor_skin_epithelial_bcc': 2,
-                          'tumor_skin_naevus_naevus': 3
-                          }
+        self.tumor_map = {"tumor_skin_epithelial_sqcc": 0, "tumor_skin_melanoma_melanoma": 1, "tumor_skin_epithelial_bcc": 2, "tumor_skin_naevus_naevus": 3}
 
-        self.classes = list(self.cat_to_num_map) if not self.tumor else list(self.tumor_map)
+        # Clean class names: replace underscores with spaces and remove duplicate words
+        raw_classes = list(self.cat_to_num_map) if not self.tumor else list(self.tumor_map)
+        self.classes = []
+        for class_name in raw_classes:
+            # Replace underscores with spaces
+            clean_name = class_name.replace("_", " ")
+            # Remove duplicate consecutive words
+            words = clean_name.split()
+            deduped_words = [words[0]] if words else []
+            for word in words[1:]:
+                if word != deduped_words[-1]:
+                    deduped_words.append(word)
+            self.classes.append(" ".join(deduped_words))
 
-        self.templates = ["a histopathology slide showing {c}",
-                          "histopathology image of {c}",
-                          "pathology tissue showing {c}",
-                          "presence of {c} tissue on image"]
+        self.templates = ["{c}", "histopathology image of {c}", "{c} tissue", "{c} cells", "{c} sample"]
 
     def __len__(self):
         return len(self.data)
@@ -102,7 +110,7 @@ class SkinDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         image_path = self.image_paths[index]
-        image = Image.open(os.path.join(self.data_root, image_path)).convert('RGB')
+        image = Image.open(os.path.join(self.data_root, image_path)).convert("RGB")
 
         multi_scale_tiles = []
 
@@ -111,14 +119,12 @@ class SkinDataset(torch.utils.data.Dataset):
                 tile = self._crop_tile(image, scale_factor)
 
                 if self.transform.__class__.__name__ == "CLIPProcessor":
-                    t = self.transform(images=tile, return_tensors="pt")['pixel_values'].squeeze(0)
+                    t = self.transform(images=tile, return_tensors="pt")["pixel_values"].squeeze(0)
                 else:
                     t = self.transform(tile)
 
             except Exception as e:
-                logger.error(
-                    f"Error processing tile for image {image_path} at scale {scale_factor}: {e}"
-                )
+                logger.error(f"Error processing tile for image {image_path} at scale {scale_factor}: {e}")
                 t = torch.zeros((3, 224, 224), dtype=torch.float32)
 
             multi_scale_tiles.append(t)
@@ -131,7 +137,7 @@ class SkinDataset(torch.utils.data.Dataset):
         else:
             label = self.tumor_map[self.labels[index]]
 
-        return multi_scale_patch, self.labels[index]
+        return multi_scale_patch, label  # self.labels[index]
 
 
 class PannukeDataset(torch.utils.data.Dataset):
@@ -143,18 +149,14 @@ class PannukeDataset(torch.utils.data.Dataset):
         self.root = root
 
         df = pd.read_csv(os.path.join(root, "PanNuke_all_binary.csv"))
-        self.df = df[df['split'] == 'train'] if train else df[df['split'] == 'test']
+        self.df = df[df["split"] == "train"] if train else df[df["split"] == "test"]
 
         self.transform = transform
         self.scale_factors = scale_factors
 
-        self.classes = ["benign",
-                        "malignant"]
+        self.classes = ["benign", "malignant"]
 
-        self.templates = ["a histopathology slide showing {c}",
-                          "histopathology image of {c}",
-                          "pathology tissue showing {c}",
-                          "presence of {c} tissue on image"]
+        self.templates = ["{c}", "histopathology image of {c}", "{c} tissue", "{c} cells", "{c} sample"]
 
     def __len__(self):
         return len(self.df)
@@ -176,7 +178,7 @@ class PannukeDataset(torch.utils.data.Dataset):
         return image.crop((left, top, left + side, top + side))
 
     def __getitem__(self, index):
-        fpath = os.path.join(self.root, self.df.iloc[index]['image'])
+        fpath = os.path.join(self.root, self.df.iloc[index]["image"])
         image = Image.open(fpath).convert("RGB")
 
         multi_scale_tiles = []
@@ -185,23 +187,20 @@ class PannukeDataset(torch.utils.data.Dataset):
                 tile = self._crop_tile(image, scale_factor)
 
                 if self.transform.__class__.__name__ == "CLIPProcessor":
-                    t = self.transform(images=tile, return_tensors="pt")['pixel_values'].squeeze(0)
+                    t = self.transform(images=tile, return_tensors="pt")["pixel_values"].squeeze(0)
                 else:
                     t = self.transform(tile)
 
             except Exception as e:
-                logger.error(
-                    f"Error processing tile for file {fpath} at scale {scale_factor}: {e}"
-                )
+                logger.error(f"Error processing tile for file {fpath} at scale {scale_factor}: {e}")
                 t = torch.zeros((3, 224, 224), dtype=torch.float32)
 
             multi_scale_tiles.append(t)
 
         multi_scale_patch = torch.stack(multi_scale_tiles, dim=0)
 
-        label = 1 if 'malignant' in self.df.iloc[index]['caption'] else 0
-        return multi_scale_patch, self.df.iloc[index]['caption']
-
+        label = 1 if "malignant" in self.df.iloc[index]["caption"] else 0
+        return multi_scale_patch, label  # self.df.iloc[index]["caption"]
 
 
 class UnitopathoDataset(torch.utils.data.Dataset):
@@ -213,12 +212,7 @@ class UnitopathoDataset(torch.utils.data.Dataset):
         self.root = root
         self.transform = transform
 
-        self.labels_dict = {"HP": 0,
-                            "NORM": 1,
-                            "TA.HG": 2,
-                            "TA.LG": 3,
-                            "TVA.HG": 4,
-                            "TVA.LG": 5}
+        self.labels_dict = {"HP": 0, "NORM": 1, "TA.HG": 2, "TA.LG": 3, "TVA.HG": 4, "TVA.LG": 5}
         # NORM - Normal
         # tissue;
         # HP - Hyperplastic
@@ -236,17 +230,16 @@ class UnitopathoDataset(torch.utils.data.Dataset):
         # Adenoma, Low - Grade
         # dysplasia.
 
-        self.classes = ["Hyperplastic Polyp",
-                        "Normal tissue",
-                        "Tubular Adenoma, High-Grade dysplasia",
-                        "Tubular Adenoma, Low-Grade dysplasia",
-                        "Tubulo-Villous Adenoma, High-Grade dysplasia",
-                        "Tubulo-Villous Adenoma, Low-Grade dysplasia"]
+        self.classes = [
+            "Hyperplastic Polyp",
+            "Normal tissue",
+            "Tubular Adenoma, High-Grade dysplasia",
+            "Tubular Adenoma, Low-Grade dysplasia",
+            "Tubulo-Villous Adenoma, High-Grade dysplasia",
+            "Tubulo-Villous Adenoma, Low-Grade dysplasia",
+        ]
 
-        self.templates = ["a histopathology slide showing {c}",
-                          "histopathology image of {c}",
-                          "pathology tissue showing {c}",
-                          "presence of {c} tissue on image"]
+        self.templates = ["{c}", "histopathology image of {c}", "{c} tissue", "{c} cells", "{c} sample"]
 
     def __len__(self):
         return len(self.data)
@@ -257,7 +250,7 @@ class UnitopathoDataset(torch.utils.data.Dataset):
 
         if self.transform is not None:
             if self.transform.__class__.__name__ == "CLIPProcessor":
-                image = self.transform(images=image, return_tensors="pt")['pixel_values'].squeeze(0)
+                image = self.transform(images=image, return_tensors="pt")["pixel_values"].squeeze(0)
             else:
                 image = self.transform(image)
 
@@ -277,25 +270,19 @@ class UnitopathoRetrievalDataset(torch.utils.data.Dataset):
         self.root = root
         self.transform = transform
 
-        self.labels_dict = {"HP": 0,
-                            "NORM": 1,
-                            "TA.HG": 2,
-                            "TA.LG": 3,
-                            "TVA.HG": 4,
-                            "TVA.LG": 5}
+        self.labels_dict = {"HP": 0, "NORM": 1, "TA.HG": 2, "TA.LG": 3, "TVA.HG": 4, "TVA.LG": 5}
 
-        # these prompts work better!
-        self.classes = ["HP",
-                        "NORM",
-                        "TA.HG",
-                        "TA.LG",
-                        "TVA.HG",
-                        "TVA.LG"]
+        # Convert cryptic abbreviations to natural language
+        self.classes = [
+            "Hyperplastic Polyp",
+            "Normal tissue", 
+            "Tubular Adenoma High-Grade dysplasia",
+            "Tubular Adenoma Low-Grade dysplasia",
+            "Tubulo-Villous Adenoma High-Grade dysplasia", 
+            "Tubulo-Villous Adenoma Low-Grade dysplasia"
+        ]
 
-        self.templates = ["a histopathology slide showing {c}",
-                          "histopathology image of {c}",
-                          "pathology tissue showing {c}",
-                          "presence of {c} tissue on image"]
+        self.templates = ["{c}", "histopathology image of {c}", "{c} tissue", "{c} cells", "{c} sample"]
 
     def __len__(self):
         return len(self.data)
@@ -306,15 +293,13 @@ class UnitopathoRetrievalDataset(torch.utils.data.Dataset):
 
         if self.transform is not None:
             if self.transform.__class__.__name__ == "CLIPProcessor":
-                image = self.transform(images=image, return_tensors="pt")['pixel_values'].squeeze(0)
+                image = self.transform(images=image, return_tensors="pt")["pixel_values"].squeeze(0)
             else:
                 image = self.transform(image)
 
         label = self.labels_dict[fpath.split("/")[-2]]
 
         return image, label
-
-
 
 
 class PathMMUDataset(torch.utils.data.Dataset):
@@ -344,14 +329,14 @@ class PathMMUDataset(torch.utils.data.Dataset):
         dir_path = dir_path / "GPTCaption"
         json_files = dir_path.glob("*.json")
         for json_file in json_files:
-            with open(json_file, 'r') as f:
+            with open(json_file, "r") as f:
                 try:
                     data = json.load(f)
-                    
+
                     data_list = list(data.values())
                     dataset_name = json_file.parts[-3]
                     for entry in data_list:
-                        entry['dataset'] = dataset_name
+                        entry["dataset"] = dataset_name
 
                     self.items.extend(data_list)
 
@@ -368,23 +353,22 @@ class PathMMUDataset(torch.utils.data.Dataset):
         """
         Retrieve an item by index, including the image and its corresponding caption.
         """
-        
+
         item = self.items[idx]
-        img_root = self.img_root[item['dataset']]
-        img_path = img_root / item['img_path']
+        img_root = self.img_root[item["dataset"]]
+        img_path = img_root / item["img_path"]
 
         try:
             image = Image.open(img_path).convert("RGB")
         except FileNotFoundError:
             print(f"Image file not found: {img_path}")
             return None
-        
+
         # for clip model
         if self.transform.__class__.__name__ == "CLIPProcessor":
-            image = self.transform(images=image, return_tensors="pt")['pixel_values'].squeeze(0)
+            image = self.transform(images=image, return_tensors="pt")["pixel_values"].squeeze(0)
         # for other models
         else:
             image = self.transform(image)
-        
-        return image, item['caption']
 
+        return image, item["caption"]
