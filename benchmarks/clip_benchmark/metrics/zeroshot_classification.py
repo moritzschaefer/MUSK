@@ -326,4 +326,33 @@ def evaluate(model, dataloader, tokenizer, classnames, templates, device, amp=Tr
         mean_per_class_recall = balanced_accuracy_score(target, pred)
         if verbose:
             print(classification_report(target, pred, digits=3))
-        return {"balanced_acc": mean_per_class_recall}
+        
+        # Generate per-class metrics
+        class_report = classification_report(target, pred, digits=3, output_dict=True, 
+                                           target_names=dataloader.dataset.classes if hasattr(dataloader.dataset, 'classes') else None)
+        
+        # Extract per-class metrics for each class
+        per_class_metrics = {}
+        if hasattr(dataloader.dataset, 'classes'):
+            for i, class_name in enumerate(dataloader.dataset.classes):
+                if class_name in class_report:
+                    per_class_metrics[f"class_{i}_{class_name}_precision"] = class_report[class_name]["precision"]
+                    per_class_metrics[f"class_{i}_{class_name}_recall"] = class_report[class_name]["recall"]
+                    per_class_metrics[f"class_{i}_{class_name}_f1"] = class_report[class_name]["f1-score"]
+                    per_class_metrics[f"class_{i}_{class_name}_support"] = class_report[class_name]["support"]
+        
+        # Combine aggregated and per-class metrics
+        metrics = {
+            "balanced_acc": mean_per_class_recall,
+            "accuracy": acc1,
+            "top5_accuracy": acc5,
+            "macro_avg_precision": class_report.get("macro avg", {}).get("precision", 0),
+            "macro_avg_recall": class_report.get("macro avg", {}).get("recall", 0),
+            "macro_avg_f1": class_report.get("macro avg", {}).get("f1-score", 0),
+            "weighted_avg_precision": class_report.get("weighted avg", {}).get("precision", 0),
+            "weighted_avg_recall": class_report.get("weighted avg", {}).get("recall", 0),
+            "weighted_avg_f1": class_report.get("weighted avg", {}).get("f1-score", 0)
+        }
+        metrics.update(per_class_metrics)
+        
+        return metrics

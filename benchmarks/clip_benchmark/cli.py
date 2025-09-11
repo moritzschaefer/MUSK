@@ -462,6 +462,10 @@ def run(args, transforms=None):
         "language": args.language,
     }
     
+    # Add class names for interpretability if available
+    if hasattr(dataset, 'classes') and dataset.classes:
+        dump["class_names"] = dataset.classes
+    
     if args.verbose:
         print(f"Dump results to: {output}")
         
