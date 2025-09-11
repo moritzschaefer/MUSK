@@ -52,18 +52,18 @@ class SkinDataset(torch.utils.data.Dataset):
         self.train = train
 
         self.cat_to_num_map = {
-            "skin_necrosis_necrosis": 0,  # removed "nontumor_"
-            "skin_muscle_skeletal": 1,
-            "skin_sweatglands_sweatglands": 2,
-            "skin_vessel_vessel": 3,
-            "skin_elastosis_elastosis": 4,
-            "skin_chondraltissue_chondraltissue": 5,
-            "skin_hairfollicle_hairfollicle": 6,
-            "skin_epidermis_epidermis": 7,
-            "skin_nerves_nerves": 8,
-            "skin_subcutis_subcutis": 9,
-            "skin_dermis_dermis": 10,
-            "skin_sebaceousglands_sebaceousglands": 11,
+            "nontumor_skin_necrosis_necrosis": 0,
+            "nontumor_skin_muscle_skeletal": 1,
+            "nontumor_skin_sweatglands_sweatglands": 2,
+            "nontumor_skin_vessel_vessel": 3,
+            "nontumor_skin_elastosis_elastosis": 4,
+            "nontumor_skin_chondraltissue_chondraltissue": 5,
+            "nontumor_skin_hairfollicle_hairfollicle": 6,
+            "nontumor_skin_epidermis_epidermis": 7,
+            "nontumor_skin_nerves_nerves": 8,
+            "nontumor_skin_subcutis_subcutis": 9,
+            "nontumor_skin_dermis_dermis": 10,
+            "nontumor_skin_sebaceousglands_sebaceousglands": 11,
             "tumor_skin_epithelial_sqcc": 12,
             "tumor_skin_melanoma_melanoma": 13,
             "tumor_skin_epithelial_bcc": 14,
@@ -84,6 +84,9 @@ class SkinDataset(torch.utils.data.Dataset):
             for word in words[1:]:
                 if word != deduped_words[-1]:
                     deduped_words.append(word)
+            # Remove "nontumor"
+            if deduped_words[0] == "nontumor":
+                deduped_words = deduped_words[1:]
             self.classes.append(" ".join(deduped_words))
 
         self.templates = ["{c}", "histopathology image of {c}", "{c} tissue", "{c} cells", "{c} sample"]
