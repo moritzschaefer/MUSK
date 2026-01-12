@@ -34,26 +34,38 @@ class SpotWhispererMUSKAdapter(nn.Module):
 
         # Image path: try common cellwhisperer model methods
         if image is not None:
+            # Ensure image has 224x224 spatial dimensions (center crop if needed)
+            if image.dim() >= 2:  # Ensure tensor has at least 2 dimensions
+                h, w = image.shape[-2:]  # Get height and width from last two dimensions
+                if h != 224 or w != 224:
+                    # Center crop to 224x224
+                    if h < 224 or w < 224:
+                        raise ValueError(f"Image dimensions {h}x{w} are smaller than required 224x224")
+
+                    # Calculate center crop coordinates
+                    center_h, center_w = h // 2, w // 2
+                    crop_h, crop_w = 112, 112  # Half of 224
+
+                    # Perform center crop
+                    start_h = center_h - crop_h
+                    end_h = center_h + crop_h
+                    start_w = center_w - crop_w
+                    end_w = center_w + crop_w
+
+                    image = image[..., start_h:end_h, start_w:end_w]
+            if image.dim() == 5:
+                assert image.shape[1] == 1, "Expected batch of images with shape (B, 1, C, H, W) for some reason"
+                image = image.squeeze(1)  # remove scale dim for now
+
             # Prefer get_image_features if available
             if hasattr(self.model, "get_image_features"):
-                try:
-                    # Some implementations return (features, embeds)
-                    img_res = self.model.get_image_features(patches=image, normalize_embeds=out_norm)
-                    if isinstance(img_res, tuple) or isinstance(img_res, list):
-                        # prefer embeds if provided
-                        vision_cls = img_res[-1]
-                    else:
-                        vision_cls = img_res
-                except TypeError:
-                    # fallback: call with different arg name
-                    img_res = self.model.get_image_features(image=image, normalize_embeds=out_norm)
-                    vision_cls = img_res[-1] if isinstance(img_res, (tuple, list)) else img_res
-            elif hasattr(self.model, "encode_image"):
-                # Some CLIP-like models expose encode_image
-                try:
-                    vision_cls = self.model.encode_image(image, proj_contrast=False, normalize=out_norm)
-                except TypeError:
-                    vision_cls = self.model.encode_image(image)
+                # Some implementations return (features, embeds)
+                img_res = self.model.get_image_features(patches_ctx=image, normalize_embeds=out_norm)
+                if isinstance(img_res, tuple) or isinstance(img_res, list):
+                    # prefer embeds if provided
+                    vision_cls = img_res[-1]
+                else:
+                    vision_cls = img_res
             else:
                 raise RuntimeError("Underlying model does not expose an image encoding API compatible with the MUSK adapter")
 
