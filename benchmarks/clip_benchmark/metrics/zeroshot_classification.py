@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
 import glob
-from sklearn.metrics import classification_report, balanced_accuracy_score
+from sklearn.metrics import classification_report, balanced_accuracy_score, roc_auc_score
 
 
 def xlm_tokenizer(tokens, tokenizer, max_len=100):
@@ -315,7 +315,7 @@ def evaluate(model, dataloader, tokenizer, classnames, templates, device, amp=Tr
         # Single label per image, multiple classes on the dataset
         # just compute accuracy and mean_per_class_recall
 
-        pred = logits.argmax(axis=1)
+        pred = logits.argmax(dim=1)
 
         # measure accuracy
         if len(dataloader.dataset.classes) >= 5:
@@ -342,6 +342,8 @@ def evaluate(model, dataloader, tokenizer, classnames, templates, device, amp=Tr
                     per_class_metrics[f"class_{i}_{class_name}_support"] = class_report[class_name]["support"]
         
         # Combine aggregated and per-class metrics
+        probs = F.softmax(logits, dim=1)
+        macro_avg_rocauc = roc_auc_score(target.numpy(), probs.numpy(), multi_class="ovr", average="macro")
         metrics = {
             "balanced_acc": mean_per_class_recall,
             "accuracy": acc1,
@@ -349,6 +351,7 @@ def evaluate(model, dataloader, tokenizer, classnames, templates, device, amp=Tr
             "macro_avg_precision": class_report.get("macro avg", {}).get("precision", 0),
             "macro_avg_recall": class_report.get("macro avg", {}).get("recall", 0),
             "macro_avg_f1": class_report.get("macro avg", {}).get("f1-score", 0),
+            "macro_avg_rocauc": macro_avg_rocauc,
             "weighted_avg_precision": class_report.get("weighted avg", {}).get("precision", 0),
             "weighted_avg_recall": class_report.get("weighted avg", {}).get("recall", 0),
             "weighted_avg_f1": class_report.get("weighted avg", {}).get("f1-score", 0)
